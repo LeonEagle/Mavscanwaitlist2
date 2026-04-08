@@ -5,45 +5,66 @@ import AnimatedCheck from "@/components/animated-check"
 import FieldLabel from "@/components/forms/FieldLabel"
 import TextInput from "@/components/forms/TextInput"
 
+const API_URL = "https://mavscan-backend.onrender.com/api/leads"
+
 export default function WaitlistSection() {
   const [fullName, setFullName] = useState("")
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [country, setCountry] = useState("")
+  const [city, setCity] = useState("")
+  const [honeypot, setHoneypot] = useState("")
   const [submitted, setSubmitted] = useState(false)
+  const [submittedEmail, setSubmittedEmail] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [errors, setErrors] = useState<string[]>([])
 
   const isValid = fullName.trim() && email.trim() && country.trim()
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!isValid) return
-    setError(null)
+    setErrors([])
     setIsSubmitting(true)
     try {
-      const res = await fetch("/api/waitlist", {
+      const body: Record<string, string> = {
+        fullName: fullName.trim(),
+        email: email.trim(),
+        country: country.trim(),
+      }
+      if (phone.trim()) body.phone = phone.trim()
+      if (city.trim()) body.city = city.trim()
+      if (honeypot) body._honeypot = honeypot
+
+      const res = await fetch(API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          fullName: fullName.trim(),
-          email: email.trim(),
-          phone: phone.trim() || undefined,
-          country: country.trim(),
-        }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
-      if (!res.ok) {
-        setError(data.error || "Something went wrong. Please try again.")
+
+      if (res.status === 429) {
+        setErrors([data.message || "Too many submissions. Please try again later."])
         return
       }
+      if (res.status === 400) {
+        setErrors(Array.isArray(data.errors) ? data.errors : [data.message || "Invalid input."])
+        return
+      }
+      if (!res.ok) {
+        setErrors(["Something went wrong. Please try again."])
+        return
+      }
+
+      setSubmittedEmail(email.trim())
       setSubmitted(true)
       setFullName("")
       setEmail("")
       setPhone("")
       setCountry("")
+      setCity("")
     } catch {
-      setError("Something went wrong. Please try again.")
+      setErrors(["Something went wrong. Please try again."])
     } finally {
       setIsSubmitting(false)
     }
@@ -74,7 +95,7 @@ export default function WaitlistSection() {
             </p>
             <h3 className="mt-2 text-xl font-semibold text-slate-900">Thanks for your interest.</h3>
             <p className="mt-3 text-slate-600">
-              We&apos;ll email you at <span className="font-medium text-[#007FCF]">{email}</span> when
+              We&apos;ll email you at <span className="font-medium text-[#007FCF]">{submittedEmail}</span> when
               the waitlist opens.
             </p>
           </div>
@@ -83,6 +104,18 @@ export default function WaitlistSection() {
             onSubmit={onSubmit}
             className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm md:p-8"
           >
+            {/* Honeypot — hidden from real users, bots may fill it in */}
+            <div style={{ display: "none" }} aria-hidden="true">
+              <input
+                type="text"
+                name="_honeypot"
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                tabIndex={-1}
+                autoComplete="off"
+              />
+            </div>
+
             <div className="space-y-4">
               <div className="space-y-2">
                 <FieldLabel>Full name</FieldLabel>
@@ -125,11 +158,26 @@ export default function WaitlistSection() {
                   autoComplete="country-name"
                 />
               </div>
+              <div className="space-y-2">
+                <FieldLabel>City (optional)</FieldLabel>
+                <TextInput
+                  value={city}
+                  onChange={(e) => setCity(e.target.value)}
+                  placeholder="e.g. Lagos"
+                  autoComplete="address-level2"
+                />
+              </div>
             </div>
 
-            {error && (
-              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-center text-sm text-red-700">
-                {error}
+            {errors.length > 0 && (
+              <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {errors.length === 1 ? (
+                  <p className="text-center">{errors[0]}</p>
+                ) : (
+                  <ul className="list-inside list-disc space-y-1">
+                    {errors.map((msg, i) => <li key={i}>{msg}</li>)}
+                  </ul>
+                )}
               </div>
             )}
 
